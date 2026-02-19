@@ -56,4 +56,41 @@ class SearchService {
       return [];
     }
   }
+
+  Future<Map<String, dynamic>> getShopDetails(String shopId) async {
+    final url = '$_baseUrl/api/shop/details?id=$shopId';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      throw Exception('Failed to load shop details');
+    } catch (e) {
+      print('SearchService: Error fetching shop details: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> addReview(String shopId, int rating, String comment) async {
+    final url = '$_baseUrl/api/shop/review';
+    final body = jsonEncode({
+      'shop_id': shopId,
+      'rating': rating,
+      'comment': comment,
+      'username': 'Customer' // For now hardcoded
+    });
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
+      if (response.statusCode != 201) {
+        throw Exception('Failed to add review');
+      }
+    } catch (e) {
+      print('SearchService: Error adding review: $e');
+      rethrow;
+    }
+  }
 }

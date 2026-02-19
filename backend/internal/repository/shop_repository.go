@@ -31,14 +31,24 @@ type ShopRepository interface {
 }
 
 type RawResult struct {
-	ShopID      string
-	ShopName    string
-	Distance    float64
-	ProductName string
-	Price       float64
-	StockStatus string
-	Category    string
-	ImageURL    string
+	ShopID         string
+	ShopName       string
+	Distance       float64
+	ProductName    string
+	Price          float64
+	StockStatus    string
+	Category       string
+	ImageURL       string
+	Lat            float64
+	Lng            float64
+	BuildingNumber string
+	Address        string
+	Pincode        string
+	City           string
+	State          string
+	Country        string
+	AverageRating  float64
+	ReviewCount    int
 }
 
 type postgresShopRepository struct {
@@ -59,8 +69,23 @@ func (r *postgresShopRepository) GetRawShopResults(ctx context.Context, req mode
 			sp.price,
 			sp.stock_status,
 			p.category,
-			COALESCE(p.image_url, '')
+			COALESCE(p.image_url, ''),
+			ST_Y(s.location::geometry) as lat,
+			ST_X(s.location::geometry) as lng,
+			COALESCE(s.building_number, ''),
+			s.address,
+			COALESCE(s.pincode, ''),
+			COALESCE(s.city, ''),
+			COALESCE(s.state, ''),
+			COALESCE(s.country, ''),
+			COALESCE(r.avg_rating, 0) as avg_rating,
+			COALESCE(r.review_count, 0) as review_count
 		FROM shops s
+		LEFT JOIN (
+			SELECT shop_id, AVG(rating) as avg_rating, COUNT(*) as review_count
+			FROM reviews
+			GROUP BY shop_id
+		) r ON s.id = r.shop_id
 		JOIN shop_products sp ON s.id = sp.shop_id
 		JOIN products p ON sp.product_id = p.id
 		WHERE (ST_DWithin(s.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3 * 1000) OR $3 = 0)
@@ -74,7 +99,7 @@ func (r *postgresShopRepository) GetRawShopResults(ctx context.Context, req mode
 	var results []RawResult
 	for rows.Next() {
 		var res RawResult
-		if err := rows.Scan(&res.ShopID, &res.ShopName, &res.Distance, &res.ProductName, &res.Price, &res.StockStatus, &res.Category, &res.ImageURL); err != nil {
+		if err := rows.Scan(&res.ShopID, &res.ShopName, &res.Distance, &res.ProductName, &res.Price, &res.StockStatus, &res.Category, &res.ImageURL, &res.Lat, &res.Lng, &res.BuildingNumber, &res.Address, &res.Pincode, &res.City, &res.State, &res.Country, &res.AverageRating, &res.ReviewCount); err != nil {
 			continue
 		}
 		results = append(results, res)

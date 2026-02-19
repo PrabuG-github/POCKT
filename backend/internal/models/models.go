@@ -36,6 +36,16 @@ type ShopOffer struct {
 	ItemsOutOfStock int        `json:"items_out_of_stock"`
 	FoundItems      []ShopItem `json:"found_items"`
 	MissingItems    []string   `json:"missing_items"`
+	Lat             float64    `json:"lat"`
+	Lng             float64    `json:"lng"`
+	BuildingNumber  string     `json:"building_number"`
+	Address         string     `json:"address"`
+	Pincode         string     `json:"pincode"`
+	City            string     `json:"city"`
+	State           string     `json:"state"`
+	Country         string     `json:"country"`
+	AverageRating   float64    `json:"average_rating"`
+	ReviewCount     int        `json:"review_count"`
 }
 
 type ShopItem struct {

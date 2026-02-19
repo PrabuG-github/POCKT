@@ -67,7 +67,17 @@ func (s *shopService) AggregatePrices(ctx context.Context, req models.BasketRequ
 							TotalPrice: itemTotal,
 						},
 					},
-					MissingItems: []string{},
+					MissingItems:   []string{},
+					Lat:            res.Lat,
+					Lng:            res.Lng,
+					BuildingNumber: res.BuildingNumber,
+					Address:        res.Address,
+					Pincode:        res.Pincode,
+					City:           res.City,
+					State:          res.State,
+					Country:        res.Country,
+					AverageRating:  res.AverageRating,
+					ReviewCount:    res.ReviewCount,
 				}
 
 				if res.StockStatus != "in_stock" {
@@ -95,11 +105,21 @@ func (s *shopService) AggregatePrices(ctx context.Context, req models.BasketRequ
 	for _, res := range rawResults {
 		if _, ok := shopMap[res.ShopID]; !ok {
 			shopMap[res.ShopID] = &models.ShopOffer{
-				ShopID:       res.ShopID,
-				ShopName:     res.ShopName,
-				Distance:     res.Distance / 1000,
-				FoundItems:   []models.ShopItem{},
-				MissingItems: []string{},
+				ShopID:         res.ShopID,
+				ShopName:       res.ShopName,
+				Distance:       res.Distance / 1000,
+				FoundItems:     []models.ShopItem{},
+				MissingItems:   []string{},
+				Lat:            res.Lat,
+				Lng:            res.Lng,
+				BuildingNumber: res.BuildingNumber,
+				Address:        res.Address,
+				Pincode:        res.Pincode,
+				City:           res.City,
+				State:          res.State,
+				Country:        res.Country,
+				AverageRating:  res.AverageRating,
+				ReviewCount:    res.ReviewCount,
 			}
 		}
 	}

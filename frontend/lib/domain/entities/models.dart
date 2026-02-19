@@ -48,6 +48,16 @@ class ShopOffer {
   final int itemsOutOfStock;
   final List<ShopItem> foundItems;
   final List<String> missingItems;
+  final double lat;
+  final double lng;
+  final String buildingNumber;
+  final String address;
+  final String pincode;
+  final String city;
+  final String state;
+  final String country;
+  final double rating;
+  final int reviewCount;
 
   ShopOffer({
     required this.shopId,
@@ -58,6 +68,16 @@ class ShopOffer {
     required this.itemsOutOfStock,
     required this.foundItems,
     required this.missingItems,
+    required this.lat,
+    required this.lng,
+    required this.buildingNumber,
+    required this.address,
+    required this.pincode,
+    required this.city,
+    required this.state,
+    required this.country,
+    required this.rating,
+    required this.reviewCount,
   });
 
   factory ShopOffer.fromJson(Map<String, dynamic> json) {
@@ -76,6 +96,45 @@ class ShopOffer {
               ?.map((e) => e.toString())
               .toList() ??
           [],
+      lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+      lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+      buildingNumber: json['building_number']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      pincode: json['pincode']?.toString() ?? '',
+      city: json['city']?.toString() ?? '',
+      state: json['state']?.toString() ?? '',
+      country: json['country']?.toString() ?? '',
+      rating: (json['average_rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: json['review_count'] ?? 0,
+    );
+  }
+}
+
+class Review {
+  final String id;
+  final String shopId;
+  final int rating;
+  final String comment;
+  final String username;
+  final String createdAt;
+
+  Review({
+    required this.id,
+    required this.shopId,
+    required this.rating,
+    required this.comment,
+    required this.username,
+    required this.createdAt,
+  });
+
+  factory Review.fromJson(Map<String, dynamic> json) {
+    return Review(
+      id: json['id'] ?? '',
+      shopId: json['shop_id'] ?? '',
+      rating: json['rating'] ?? 0,
+      comment: json['comment'] ?? '',
+      username: json['username'] ?? '',
+      createdAt: json['created_at'] ?? '',
     );
   }
 }
