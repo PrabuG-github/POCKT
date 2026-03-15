@@ -8,10 +8,13 @@ type Shop struct {
 	Address        string  `json:"address"`
 	Pincode        string  `json:"pincode"`
 	City           string  `json:"city"`
-	State          string  `json:"state"`
-	Country        string  `json:"country"`
-	Lat            float64 `json:"lat"`
-	Lng            float64 `json:"lng"`
+	State          string   `json:"state"`
+	Country        string   `json:"country"`
+	Lat            float64  `json:"lat"`
+	Lng            float64  `json:"lng"`
+	OpeningTime    string   `json:"opening_time"` // HH:MM
+	ClosingTime    string   `json:"closing_time"` // HH:MM
+	ImageURLs      []string `json:"image_urls"`
 }
 
 type BasketItem struct {

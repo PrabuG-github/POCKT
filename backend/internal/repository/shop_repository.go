@@ -109,19 +109,32 @@ func (r *postgresShopRepository) GetRawShopResults(ctx context.Context, req mode
 
 func (r *postgresShopRepository) GetShopDetails(ctx context.Context, shopID string) (models.Shop, error) {
 	var s models.Shop
-	query := `SELECT id, name, description, COALESCE(building_number, ''), address, COALESCE(pincode, ''), COALESCE(city, ''), COALESCE(state, ''), COALESCE(country, ''), ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng FROM shops WHERE id = $1`
-	err := r.db.QueryRow(ctx, query, shopID).Scan(&s.ID, &s.Name, &s.Description, &s.BuildingNumber, &s.Address, &s.Pincode, &s.City, &s.State, &s.Country, &s.Lat, &s.Lng)
+	query := `
+		SELECT 
+			id, name, description, COALESCE(building_number, ''), address, 
+			COALESCE(pincode, ''), COALESCE(city, ''), COALESCE(state, ''), COALESCE(country, ''), 
+			ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng,
+			COALESCE(opening_time, '09:00'), COALESCE(closing_time, '21:00'), 
+			COALESCE(image_urls, ARRAY[]::TEXT[])
+		FROM shops WHERE id = $1`
+	err := r.db.QueryRow(ctx, query, shopID).Scan(
+		&s.ID, &s.Name, &s.Description, &s.BuildingNumber, &s.Address, 
+		&s.Pincode, &s.City, &s.State, &s.Country, &s.Lat, &s.Lng,
+		&s.OpeningTime, &s.ClosingTime, &s.ImageURLs,
+	)
 	return s, err
 }
 
 func (r *postgresShopRepository) UpdateShop(ctx context.Context, shopID string, s models.Shop) error {
 	query := `
 		UPDATE shops 
-		SET name = $1, description = $2, building_number = $3, address = $4, pincode = $5, city = $6, state = $7, country = $8, location = ST_GeogFromText($9)
-		WHERE id = $10
+		SET name = $1, description = $2, building_number = $3, address = $4, 
+		    pincode = $5, city = $6, state = $7, country = $8, 
+		    location = ST_GeogFromText($9), opening_time = $10, closing_time = $11, image_urls = $12
+		WHERE id = $13
 	`
 	point := fmt.Sprintf("POINT(%f %f)", s.Lng, s.Lat)
-	_, err := r.db.Exec(ctx, query, s.Name, s.Description, s.BuildingNumber, s.Address, s.Pincode, s.City, s.State, s.Country, point, shopID)
+	_, err := r.db.Exec(ctx, query, s.Name, s.Description, s.BuildingNumber, s.Address, s.Pincode, s.City, s.State, s.Country, point, s.OpeningTime, s.ClosingTime, s.ImageURLs, shopID)
 	return err
 }
 
@@ -134,10 +147,10 @@ func (r *postgresShopRepository) GetDefaultShopID(ctx context.Context) (string, 
 func (r *postgresShopRepository) CreateDefaultShop(ctx context.Context) (string, error) {
 	var id string
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO shops (name, description, building_number, address, pincode, city, state, country, location) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ST_GeogFromText($9)) 
+		INSERT INTO shops (name, description, building_number, address, pincode, city, state, country, location, opening_time, closing_time, image_urls) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ST_GeogFromText($9), $10, $11, $12) 
 		RETURNING id`,
-		"POCKT Demo Store", "Your trusty local grocer", "", "MG Road", "560001", "Bangalore", "Karnataka", "India", "POINT(77.5946 12.9716)",
+		"POCKT Demo Store", "Your trusty local grocer", "", "MG Road", "560001", "Bangalore", "Karnataka", "India", "POINT(77.5946 12.9716)", "08:00", "22:00", []string{"https://images.unsplash.com/photo-1534723452862-4c874018d66d", "https://images.unsplash.com/photo-1542838132-92c53300491e"},
 	).Scan(&id)
 	return id, err
 }

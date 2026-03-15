@@ -71,6 +71,20 @@ class SearchService {
     }
   }
 
+  Future<ShopDetailsResponse> getShopDetailsById(String shopId) async {
+    final url = '$_baseUrl/api/shop/details?id=$shopId';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return ShopDetailsResponse.fromJson(jsonDecode(response.body));
+      }
+      throw Exception('Failed to load shop details');
+    } catch (e) {
+      print('SearchService: Error fetching shop details: $e');
+      rethrow;
+    }
+  }
+
   Future<void> addReview(String shopId, int rating, String comment) async {
     final url = '$_baseUrl/api/shop/review';
     final body = jsonEncode({

@@ -151,6 +151,9 @@ class Shop {
   final String country;
   final double lat;
   final double lng;
+  final String openingTime;
+  final String closingTime;
+  final List<String> imageUrls;
 
   Shop({
     required this.id,
@@ -164,6 +167,9 @@ class Shop {
     this.country = '',
     required this.lat,
     required this.lng,
+    this.openingTime = '09:00',
+    this.closingTime = '21:00',
+    this.imageUrls = const [],
   });
 
   factory Shop.fromJson(Map<String, dynamic> json) {
@@ -179,6 +185,9 @@ class Shop {
       country: json['country']?.toString() ?? '',
       lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
       lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+      openingTime: json['opening_time']?.toString() ?? '09:00',
+      closingTime: json['closing_time']?.toString() ?? '21:00',
+      imageUrls: (json['image_urls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 
@@ -194,6 +203,9 @@ class Shop {
         'country': country,
         'lat': lat,
         'lng': lng,
+        'opening_time': openingTime,
+        'closing_time': closingTime,
+        'image_urls': imageUrls,
       };
 }
 
@@ -242,6 +254,37 @@ class InventoryItem {
       stockStatus: json['stock_status'] ?? 'in_stock',
       category: json['category'] ?? '',
       imageUrl: json['image_url'] ?? '',
+    );
+  }
+}
+class ShopDetailsResponse {
+  final Shop shop;
+  final List<InventoryItem> products;
+  final List<Review> reviews;
+  final double averageRating;
+  final int reviewCount;
+
+  ShopDetailsResponse({
+    required this.shop,
+    required this.products,
+    required this.reviews,
+    required this.averageRating,
+    required this.reviewCount,
+  });
+
+  factory ShopDetailsResponse.fromJson(Map<String, dynamic> json) {
+    return ShopDetailsResponse(
+      shop: Shop.fromJson(json['shop'] ?? {}),
+      products: (json['products'] as List<dynamic>?)
+              ?.map((e) => InventoryItem.fromJson(e))
+              .toList() ??
+          [],
+      reviews: (json['reviews'] as List<dynamic>?)
+              ?.map((e) => Review.fromJson(e))
+              .toList() ??
+          [],
+      averageRating: (json['average_rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: json['review_count'] ?? 0,
     );
   }
 }

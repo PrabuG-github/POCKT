@@ -43,6 +43,9 @@ func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
 		ALTER TABLE shops ADD COLUMN IF NOT EXISTS city VARCHAR(100);
 		ALTER TABLE shops ADD COLUMN IF NOT EXISTS state VARCHAR(100);
 		ALTER TABLE shops ADD COLUMN IF NOT EXISTS country VARCHAR(100);
+		ALTER TABLE shops ADD COLUMN IF NOT EXISTS opening_time VARCHAR(5); -- HH:MM
+		ALTER TABLE shops ADD COLUMN IF NOT EXISTS closing_time VARCHAR(5); -- HH:MM
+		ALTER TABLE shops ADD COLUMN IF NOT EXISTS image_urls TEXT[];
 		
 		CREATE TABLE IF NOT EXISTS reviews (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

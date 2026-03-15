@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/services/search_service.dart';
+import 'shop_detail_view.dart';
+import '../../core/services/location_service.dart';
 import '../../domain/entities/models.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class ComparisonView extends StatefulWidget {
   final List<ShopOffer>? initialOffers;
@@ -19,20 +24,48 @@ class _ComparisonViewState extends State<ComparisonView> {
   double _radius = 3.0;
   bool _isMapView = false;
   final SearchService _searchService = SearchService();
+  final LocationService _locationService = LocationService();
   List<ShopOffer> _offers = [];
   bool _isLoading = false;
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
+  UserLocation? _currentLocation;
+  Timer? _sliderDebounce;
+
+  // Map state
+  GoogleMapController? _mapController;
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
 
   @override
   void initState() {
     super.initState();
     _radius = _searchService.preferredRadius;
-    
-    if (widget.initialOffers != null) {
-      _offers = widget.initialOffers!;
-      // Do not auto-search if results provided
-    } else {
-      _performSearch(""); 
+    _initLocation();
+  }
+
+  Future<void> _initLocation() async {
+    setState(() => _isLoading = true);
+    try {
+      final loc = await _locationService.determinePosition();
+      setState(() {
+        _currentLocation = loc;
+      });
+      
+      if (widget.initialOffers != null) {
+        _offers = widget.initialOffers!;
+        _isLoading = false;
+      } else {
+        // Initial empty search or default view
+        _isLoading = false;
+      }
+    } catch (e) {
+      print("Location error: $e");
+      // Fallback to manual or default
+      setState(() {
+        _currentLocation = UserLocation(latitude: 12.9716, longitude: 77.5946, address: "Bangalore (Default)");
+        _isLoading = false;
+      });
     }
   }
 
@@ -54,16 +87,108 @@ class _ComparisonViewState extends State<ComparisonView> {
         BasketItem(productId: 'search_query', name: query, quantity: 1),
       ],
       radiusKm: _radius,
-      userLat: 12.9716, // Default to Bangalore coords or similar for testing
-      userLong: 77.5946,
+      userLat: _currentLocation?.latitude ?? 12.9716,
+      userLong: _currentLocation?.longitude ?? 77.5946,
     );
 
     print('ComparisonView: Found ${results.length} offers for "$query" at radius $_radius');
 
+    print('ComparisonView: Found ${results.length} offers for "$query" at radius $_radius');
+
+    _updateMarkersAndPolylines(results);
+  }
+
+  void _updateMarkersAndPolylines(List<ShopOffer> results) {
+    if (_currentLocation == null) return;
+
+    final Set<Marker> newMarkers = {};
+    final Set<Polyline> newPolylines = {};
+
+    // User marker
+    newMarkers.add(
+      Marker(
+        markerId: const MarkerId('user_location'),
+        position: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+        infoWindow: const InfoWindow(title: 'Your Location'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+      ),
+    );
+
+    for (int i = 0; i < results.length; i++) {
+      final offer = results[i];
+      final bool isBestPrice = i == 0;
+      
+      final shopPos = LatLng(offer.lat, offer.lng);
+      
+      // Shop marker
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId('shop_${offer.shopId}'),
+          position: shopPos,
+          infoWindow: InfoWindow(
+            title: offer.shopName,
+            snippet: '₹${offer.totalPrice.toStringAsFixed(0)} - ${offer.distance.toStringAsFixed(1)}km',
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            isBestPrice ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
+          ),
+        ),
+      );
+
+      // Polyline from user to shop
+      newPolylines.add(
+        Polyline(
+          polylineId: PolylineId('path_${offer.shopId}'),
+          points: [
+            LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+            shopPos,
+          ],
+          color: isBestPrice ? Colors.green.withOpacity(0.5) : Colors.red.withOpacity(0.3),
+          width: isBestPrice ? 4 : 2,
+        ),
+      );
+    }
+
     setState(() {
       _offers = results;
       _isLoading = false;
+      _markers = newMarkers;
+      _polylines = newPolylines;
     });
+
+    if (_mapController != null && results.isNotEmpty) {
+      _fitMapToContent();
+    }
+  }
+
+  void _updateMarkersAndPolylinesOld() {
+    // This is no longer used, merged into _updateMarkersAndPolylines(results)
+  }
+
+  void _fitMapToContent() {
+    if (_currentLocation == null || _offers.isEmpty) return;
+
+    double minLat = _currentLocation!.latitude;
+    double maxLat = _currentLocation!.latitude;
+    double minLng = _currentLocation!.longitude;
+    double maxLng = _currentLocation!.longitude;
+
+    for (final offer in _offers) {
+      if (offer.lat < minLat) minLat = offer.lat;
+      if (offer.lat > maxLat) maxLat = offer.lat;
+      if (offer.lng < minLng) minLng = offer.lng;
+      if (offer.lng > maxLng) maxLng = offer.lng;
+    }
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        50.0, // padding
+      ),
+    );
   }
 
   Future<void> _launchMap(double lat, double lng) async {
@@ -76,58 +201,10 @@ class _ComparisonViewState extends State<ComparisonView> {
   }
 
   void _showProductDetails(ShopOffer offer) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => DraggableScrollableSheet(
-          initialChildSize: 0.9,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (context, scrollController) => Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            ),
-            child: DefaultTabController(
-              length: 2,
-              child: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const TabBar(
-                    tabs: [
-                      Tab(text: "Products"),
-                      Tab(text: "Reviews"),
-                    ],
-                    labelColor: Color(0xFF2563EB),
-                    unselectedLabelColor: Color(0xFF64748B),
-                    indicatorColor: Color(0xFF2563EB),
-                    labelStyle: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildProductTab(offer, scrollController),
-                        _buildReviewTab(offer, scrollController, () => setSheetState(() {})),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ShopDetailView(shopId: offer.shopId),
       ),
     );
   }
@@ -495,7 +572,9 @@ class _ComparisonViewState extends State<ComparisonView> {
             child: _isLoading
                 ? _buildShimmerList()
                 : _offers.isEmpty
-                    ? _buildEmptyState()
+                    ? (_searchController.text.isEmpty 
+                        ? _buildEmptyState() 
+                        : _buildNoResultsState())
                     : (_isMapView ? _buildMapView() : _buildListView()),
           ),
         ],
@@ -645,21 +724,64 @@ class _ComparisonViewState extends State<ComparisonView> {
 
   Widget _buildSliverAppBar() {
     return SliverAppBar(
-      expandedHeight: 120.0,
+      expandedHeight: 140.0,
       floating: false,
       pinned: true,
       elevation: 0,
       backgroundColor: const Color(0xFF0F172A),
       flexibleSpace: FlexibleSpaceBar(
         centerTitle: true,
-        title: const Text(
-          "Marketplace",
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            letterSpacing: 2,
-            fontSize: 20,
-          ),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Marketplace",
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 2,
+                fontSize: 18,
+              ),
+            ),
+            GestureDetector(
+              onTap: _showLocationDialog,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.location_on, color: Colors.blueAccent, size: 10),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      _currentLocation?.address ?? "Select Location",
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      _radius == 0 ? "∞ KM" : "${_radius.toStringAsFixed(1)} KM",
+                      style: const TextStyle(
+                        color: Colors.blueAccent,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         background: Container(
           decoration: const BoxDecoration(
@@ -677,6 +799,79 @@ class _ComparisonViewState extends State<ComparisonView> {
           onPressed: () => setState(() => _isMapView = !_isMapView),
         )
       ],
+    );
+  }
+
+  void _showLocationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text("Set Location", style: TextStyle(fontWeight: FontWeight.w900)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.my_location, color: Colors.blue),
+              title: const Text("Use Current Location"),
+              subtitle: const Text("Get data near you"),
+              onTap: () {
+                Navigator.pop(context);
+                _initLocation();
+                if (_searchController.text.isNotEmpty) {
+                  _performSearch(_searchController.text);
+                }
+              },
+            ),
+            const Divider(),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _locationController,
+              decoration: InputDecoration(
+                hintText: "Enter area (e.g. T. Nagar, Chennai)",
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final query = _locationController.text;
+              if (query.isNotEmpty) {
+                Navigator.pop(context);
+                setState(() => _isLoading = true);
+                final loc = await _locationService.getLocationFromAddress(query);
+                if (loc != null) {
+                  setState(() {
+                    _currentLocation = loc;
+                    _isLoading = false;
+                  });
+                  if (_searchController.text.isNotEmpty) {
+                    _performSearch(_searchController.text);
+                  }
+                } else {
+                  setState(() => _isLoading = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Could not find location")),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text("Set Area"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -976,27 +1171,99 @@ class _ComparisonViewState extends State<ComparisonView> {
   }
 
   Widget _buildMapView() {
+    if (_currentLocation == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return Container(
-      margin: const EdgeInsets.all(20),
+      margin: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.blue.shade100),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.blueGrey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.map_rounded, size: 80, color: Colors.blue.shade200),
-            const SizedBox(height: 15),
-            Text(
-              "Interactive Map View",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+      child: RepaintBoundary(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+              zoom: 13,
             ),
-            Text("Found ${_offers.length} shops within ${_radius == 0 ? 'All' : _radius.toStringAsFixed(1) + 'km'}", 
-                 style: TextStyle(color: Colors.blue.shade700)),
-          ],
+            onMapCreated: (controller) {
+              _mapController = controller;
+              if (_offers.isNotEmpty) _fitMapToContent();
+            },
+            markers: _markers,
+            polylines: _polylines,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            mapToolbarEnabled: false,
+            zoomControlsEnabled: false,
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNoResultsState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.05),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.search_off_rounded,
+              size: 80,
+              color: Colors.red.shade200,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "No products found",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.blueGrey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              "We couldn't find matches for '${_searchController.text}' within ${_radius == 0 ? 'any' : _radius.toStringAsFixed(1) + 'km'} radius.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.blueGrey.shade500,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          TextButton.icon(
+            onPressed: () {
+              _searchController.clear();
+              _performSearch("");
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text(
+              "Clear search and view collections",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1038,11 +1305,17 @@ class _ComparisonViewState extends State<ComparisonView> {
             child: Slider(
               value: _radius,
               min: 0.0,
-              max: 10.0,
+              max: 100.0,
               onChanged: (val) {
                 setState(() {
                   _radius = val;
                   _searchService.preferredRadius = val; // Persist change
+                });
+
+                // Debounce the actual search to avoid spamming the backend
+                _sliderDebounce?.cancel();
+                _sliderDebounce = Timer(const Duration(milliseconds: 500), () {
+                  _performSearch(_searchController.text);
                 });
               },
               onChangeEnd: (val) => _performSearch(_searchController.text),
